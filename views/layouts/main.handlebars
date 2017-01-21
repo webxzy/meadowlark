@@ -1,0 +1,40 @@
+<!doctype html>
+<html>
+
+<head>
+    <title>Meadowlark Travel</title>
+    {{{_sections.head}}} {{#if showTests}}
+    <link rel="stylesheet" href="/vendor/mocha.css"> {{/if}}
+    <link rel="stylesheet" href="http://apps.bdimg.com/libs/bootstrap/3.3.4/css/bootstrap.css">
+</head>
+
+<body>
+    <header>
+        <a href="http://localhost:3000"><img src="/imgs/baidu.jpg" alt="logo" width="100"></a>
+    </header>
+    {{#if flash}}
+    <div class="alert alert-dismissible alert-{{flash.type}}">
+        <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
+        <strong>{{flash.intro}} </strong>{{{flash.message}}}
+    </div>
+    {{/if}} {{{body}}}
+    <script src="http://apps.bdimg.com/libs/jquery/2.1.4/jquery.min.js"></script>
+    {{{_sections.jquery}}} {{#if showTests}}
+    <div id="mocha"></div>
+    <script src="/vendor/mocha.js"></script>
+    <script src="/vendor/chai.js"></script>
+    <script>
+        mocha.ui('tdd');
+        var assert = chai.assert;
+    </script>
+    <script src="/qa/tests-global.js"></script>
+    {{#if pageTestScript}}
+    <script src="{{pageTestScript}}"></script>
+    {{/if}}
+    <script>
+        mocha.run()
+    </script>
+    {{/if}}
+</body>
+
+</html>

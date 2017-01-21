@@ -1,0 +1,57 @@
+// var Browser = require('zombie');
+// We're going to make requests to http://example.com/signup
+// Which will be routed to our test server localhost:3000
+// Browser.localhost('example.com', 3000);
+
+// describe('进入登录页', function(){
+//     const browser = new Browser();
+//     before(function(done){
+//         browser.visit('http://localhost:3000/tours/hood-river', done);
+//     });
+//     describe('点击表单链接', function(){
+//         before(function(done){
+//             browser.clickLink('.request-group-rate', function(){
+//                 console.log('12345566666')
+//             })
+//         })
+//     })
+    
+// })
+
+// describe('User visits signup page', function() {
+
+    // const browser = new Browser();
+    // before(function(done) {
+    //     browser.visit('http://localhost:3000/tours/request-group-rate', done);
+    // });
+
+    // it('是否访问成功', function() {
+    //      browser.assert.success();
+    // });
+
+    // it('标题是否正确', function(){
+    //     browser.assert.text('title', 'Meadowlark Travel');
+    // });
+
+    // it('referrer的值是否为空', function(){
+    //     browser.assert.input('form input[name=referrer]', 'http://localhost:3000/tours/hood-river');
+    // });
+
+//   describe('submits form', function() {
+
+//     before(function(done) {
+//       browser
+//         .fill('email',    'zombie@underworld.dead')
+//         .fill('password', 'eat-the-living')
+//         .pressButton('Sign Me Up!', done);
+//     });
+
+//     it('should be successful', function() {
+//       browser.assert.success();
+//     });
+
+//     it('should see welcome page', function() {
+//       browser.assert.text('title', 'Welcome To Brains Depot');
+//     });
+//   });
+// });
