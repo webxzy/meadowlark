@@ -14,7 +14,8 @@
     "express": "^4.14.0",
     "express-session": "^1.14.2",
     "express3-handlebars": "^0.5.2",
-    "formidable": "^1.1.1"
+    "formidable": "^1.1.1",
+    "nodemailer": "^2.7.0"
   },
   "devDependencies": {
     "chai": "^3.5.0",

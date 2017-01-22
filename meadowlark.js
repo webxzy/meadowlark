@@ -3,6 +3,7 @@ var fortune = require('./lib/fortune.js');
 var weather = require('./lib/weatherData');
 var credentials = ('./credentials.js');
 var formidable = require('formidable');
+var nodemailer = require('nodemailer');
 var app = express();
 var handlebars = require('express3-handlebars').create({
     defaultLayout: 'main',
@@ -19,8 +20,38 @@ var handlebars = require('express3-handlebars').create({
 });
 app.engine('handlebars', handlebars.engine);
 app.set('view engine', 'handlebars');
-
 app.set('port', process.env.PORT || 3000);
+
+// 发送邮件
+var transporter = nodemailer.createTransport('smtps://webxzy15@gmail.com:xu741023@smtp.gmail.com');
+
+// 更多配置
+/* var transporter = nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true,
+    auth: {
+        user: 'webxzy15@gmail.com',
+        pass: 'xu741023'
+    },
+    logger: true,
+    debug: true
+}); */
+
+var mailOptions = {
+    from: '徐忠元 <webxzy15@gamil.com>',
+    to: 'webxzy@qq.com',
+    subject: 'Hello',
+    text: 'You are great!',
+    html: '<h1>You are great!</h1>'
+}
+
+transporter.sendMail(mailOptions, function(err, info) {
+    if (err) {
+        return console.log('email 错误：' + err);
+    }
+    console.log('Message sent: ' + info.response);
+});
 
 // 中间件
 app.use(express.static(__dirname + '/public'));
