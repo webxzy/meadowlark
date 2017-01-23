@@ -1,0 +1,20 @@
+<h1>你的购物车</h1>
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <td>目的地</td>
+            <td>人数</td>
+        </tr>
+    </thead>
+    <tbody>
+        {{#each items}}
+        <tr>
+            <td>{{name}}</td>
+            <td>{{guests}}</td>
+            <td><a href="cart/delete-cart/{{tag}}">&times</a></td>
+        </tr>
+        {{/each}}
+    </tbody>
+</table>
+
+<a class="btn btn-primary" href="/cart/checkout">结算</a>

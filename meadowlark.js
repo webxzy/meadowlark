@@ -1,7 +1,7 @@
 var express = require('express');
 var fortune = require('./lib/fortune.js');
 var weather = require('./lib/weatherData');
-var credentials = ('./credentials.js');
+var credentials = require('./credentials.js');
 var formidable = require('formidable');
 var nodemailer = require('nodemailer');
 var app = express();
@@ -22,53 +22,54 @@ app.engine('handlebars', handlebars.engine);
 app.set('view engine', 'handlebars');
 app.set('port', process.env.PORT || 3000);
 
-// 发送邮件
-var transporter = nodemailer.createTransport('smtps://webxzy15@gmail.com:xu741023@smtp.gmail.com');
+// 邮件
+var transporter = nodemailer.createTransport('smtps://' + credentials.mail.name + '@gmail.com:' + credentials.mail.password + '@smtp.gmail.com');
 
 // 更多配置
-/* var transporter = nodemailer.createTransport({
+/*var transporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
     port: 465,
     secure: true,
     auth: {
-        user: 'webxzy15@gmail.com',
-        pass: 'xu741023'
+        user: credentials.mail.name,
+        pass: credentials.mail.password
     },
     logger: true,
     debug: true
-}); */
+});*/
 
-var mailOptions = {
+/*var mailOptions = {
     from: '徐忠元 <webxzy15@gamil.com>',
     to: 'webxzy@qq.com',
-    subject: 'Hello',
+    subject: '程序启动提示',
     text: 'You are great!',
-    html: '<h1>You are great!</h1>'
-}
+    html: '<h1>程序已启动！</h1>'
+}*/
 
-transporter.sendMail(mailOptions, function(err, info) {
+/*transporter.sendMail(mailOptions, function(err, info) {
     if (err) {
         return console.log('email 错误：' + err);
     }
     console.log('Message sent: ' + info.response);
-});
+});*/
 
 // 中间件
 app.use(express.static(__dirname + '/public'));
 app.use(require('body-parser')()); // form表单
 app.use(require('cookie-parser')(credentials.cookieSecret)); // cookie解析
 app.use(require('express-session')({ // 内存会话
-    secret: 'keyboard cat',
-    resave: false,
-    saveUninitialized: false
+    secret: credentials.cookieSecret, // 与cookie-parser保持一致
+    resave: true,
+    saveUninitialized: true
 }));
 
-// 即显消息 使用内存存储
-app.use(function(req, res, next) {
-    res.locals.flash = req.session.flash;
-    delete req.session.flash;
-    next();
-});
+app.get('/session', function(req, res) {
+    if (req.session.name) {
+        console.log(req.session.name);
+    }
+    req.session.name = 'a';
+    res.send('a');
+})
 
 // qa
 app.use(function(req, res, next) {
@@ -87,18 +88,18 @@ app.use(function(req, res, next) {
 
 // 首页
 app.get('/', function(req, res) {
-    // req.session.userName = 'xzy';
     res.render('home');
 });
 
 app.get('/about', function(req, res) {
-    console.log(req.cookies)
+    console.log(req.cookies); // 获取普通cookie
+    console.log(req.signedCookies); // 获取签名cookie
 
     // 设置一个cookie
     res.cookie('about', 'pass');
+    // 设置一个普通cookie
+    res.cookie('webxzy-token', '666', { signed: true });
 
-    // res.cookie('mytoken', '666', { signed: true }); 
-    // 报错 cookieParser("secret") required for signed cookies
     res.render('about', {
         fortune: fortune.getFortune(),
         pageTestScript: '/qa/tests-about.js'
@@ -146,6 +147,13 @@ app.get('/jq-test', function(req, res) {
 var NewsletterSignup = function() {};
 NewsletterSignup.prototype.save = function(cb) { cb() };
 
+// 即显消息 使用内存存储
+app.use(function(req, res, next) {
+    res.locals.flash = req.session.flash;
+    delete req.session.flash;
+    next();
+});
+
 // 订阅处理程序
 app.post('/process', function(req, res) {
     var name = req.body.name || '',
@@ -157,7 +165,7 @@ app.post('/process', function(req, res) {
         }
         req.session.flash = {
             type: 'danger',
-            intro: '确认错误',
+            intro: '邮箱错误',
             message: '您输入的电子邮件地址无效'
         };
         return res.redirect(303, '/newsletter/archive');
@@ -186,6 +194,120 @@ app.post('/process', function(req, res) {
         }
         return res.redirect(303, '/newsletter/archive');
     });
+});
+
+
+// --------------- 购物车
+
+// 编辑界面
+app.get('/tours/:tour', function(req, res) {
+    var name = '';
+    switch (req.params.tour) {
+        case 'bj':
+            name = '北京';
+            break;
+        case 'tj':
+            name = '天津';
+            break;
+        default:
+            name = null;
+    }
+    res.render('tour', { tour: { name: name, tag: req.params.tour } });
+});
+
+// 提交编辑
+app.post('/cart/add', function(req, res) {
+    var cart = req.session.cart || (req.session.cart = { items: [] });
+    var items = cart.items;
+    var name = req.body.name;
+    // 如果是已经存在的，直接修改数量
+    for (var i = 0; i < items.length; i++) {
+        if (items[i].name === name) {
+            items[i].guests = req.body.guests;
+            return res.redirect(303, '/cart');
+        }
+    }
+    cart.items.push({
+        tag: req.body.tag,
+        name: req.body.name,
+        guests: req.body.guests
+    });
+    res.redirect(303, '/cart');
+});
+
+app.get('/cart/delete-cart/:tag', function(req, res, next) {
+    var items = req.session.cart.items;
+    if (!items) next();
+    var tag = req.params.tag
+    for (var i = 0; i < items.length; i++) {
+        if (items[i].tag === tag) {
+            items.splice(i, 1);
+            return res.render('cart', { items: items });
+        }
+    }
+});
+
+// 购物列表
+app.get('/cart', function(req, res, next) {
+    var cart = req.session.cart;
+    if (!cart) {
+        console.log('cart is empty!');
+        next();
+    }
+    res.render('cart', { items: cart.items });
+})
+
+// 添加提交信息页
+app.get('/cart/checkout', function(req, res, next) {
+    var cart = req.session.cart;
+    if (!cart) next();
+    res.render('cart-checkout');
+});
+
+// 提交购物
+app.post('/cart/chcekout', function(req, res, next) {
+    var cart = req.session.cart;
+    if (!cart) {
+        next(new Error('Cart does not exist.'));
+    }
+    var name = req.body.name,
+        email = req.body.email;
+
+    if (email.indexOf('@') === -1) {
+        return next(new Error('邮箱格式错误'));
+    }
+    cart.number = Math.random().toString().replace(/^0\.0*/, '');
+    cart.billing = {
+        name: name,
+        email: email
+    };
+
+    // render接收的第三个参数是个回调函数，函数接收渲染好的html，再执行相关操作，这样就不会渲染到浏览器端。
+    res.render('email/cart-thank-you', { layout: null, cart: cart }, function(err, html) {
+        if (err) {
+            console.log('email模版错误');
+        }
+        transporter.sendMail({
+            from: '徐忠元 <webxzy15@gmail.com>',
+            to: email,
+            subject: '来自草地鹨的订单详情',
+            html: html,
+            generateTextFromHtml: true
+        }, function(err, info) {
+            if (err) {
+                console.error('邮件错误：' + err.stack);
+            }
+            console.log('email send：' + info.response);
+        });
+    });
+
+    res.redirect(303, '/cart-thankyou');
+});
+
+app.get('/cart-thankyou', function(req, res, next) {
+    var cart = req.session.cart;
+    if (!cart) return next();
+    res.render('cart-thankyou', { cart: cart });
 });
 
 app.get('/newsletter', function(req, res) {
@@ -231,8 +353,8 @@ app.use(function(req, res) {
 
 // 500
 app.use(function(err, req, res, next) {
-    console.error(err.stack);
-    res.status(500).render('500');
+    console.log(err.stack);
+    res.status(500).render('500', { info: err });
 });
 
 app.listen(app.get('port'), function() {
