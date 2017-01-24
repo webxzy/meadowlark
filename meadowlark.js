@@ -2,6 +2,7 @@ var express = require('express');
 var fortune = require('./lib/fortune.js');
 var weather = require('./lib/weatherData');
 var credentials = require('./credentials.js');
+var emailService = require('./lib/email.js')(credentials);
 var formidable = require('formidable');
 var nodemailer = require('nodemailer');
 var app = express();
@@ -22,36 +23,7 @@ app.engine('handlebars', handlebars.engine);
 app.set('view engine', 'handlebars');
 app.set('port', process.env.PORT || 3000);
 
-// 邮件
-var transporter = nodemailer.createTransport('smtps://' + credentials.mail.name + '@gmail.com:' + credentials.mail.password + '@smtp.gmail.com');
 
-// 更多配置
-/*var transporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 465,
-    secure: true,
-    auth: {
-        user: credentials.mail.name,
-        pass: credentials.mail.password
-    },
-    logger: true,
-    debug: true
-});*/
-
-/*var mailOptions = {
-    from: '徐忠元 <webxzy15@gamil.com>',
-    to: 'webxzy@qq.com',
-    subject: '程序启动提示',
-    text: 'You are great!',
-    html: '<h1>程序已启动！</h1>'
-}*/
-
-/*transporter.sendMail(mailOptions, function(err, info) {
-    if (err) {
-        return console.log('email 错误：' + err);
-    }
-    console.log('Message sent: ' + info.response);
-});*/
 
 // 中间件
 app.use(express.static(__dirname + '/public'));
@@ -286,22 +258,11 @@ app.post('/cart/chcekout', function(req, res, next) {
     res.render('email/cart-thank-you', { layout: null, cart: cart }, function(err, html) {
         if (err) {
             console.log('email模版错误');
+            return next(err);
         }
-        transporter.sendMail({
-            from: '徐忠元 <webxzy15@gmail.com>',
-            to: email,
-            subject: '来自草地鹨的订单详情',
-            html: html,
-            generateTextFromHtml: true
-        }, function(err, info) {
-            if (err) {
-                console.error('邮件错误：' + err.stack);
-            }
-            console.log('email send：' + info.response);
-        });
+        emailService.send(email, 'webxzy订单提醒', html);
+        res.redirect(303, '/cart-thankyou');
     });
-
-    res.redirect(303, '/cart-thankyou');
 });
 
 app.get('/cart-thankyou', function(req, res, next) {
