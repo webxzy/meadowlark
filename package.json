@@ -10,11 +10,15 @@
   "license": "ISC",
   "dependencies": {
     "body-parser": "^1.16.0",
+    "cluster": "^0.7.7",
     "cookie-parser": "^1.4.3",
     "express": "^4.14.0",
+    "express-logger": "0.0.3",
     "express-session": "^1.14.2",
     "express3-handlebars": "^0.5.2",
     "formidable": "^1.1.1",
+    "loadtest": "^2.2.1",
+    "morgan": "^1.7.0",
     "nodemailer": "^2.7.0"
   },
   "devDependencies": {

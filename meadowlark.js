@@ -1,3 +1,4 @@
+var http = require('http');
 var express = require('express');
 var fortune = require('./lib/fortune.js');
 var weather = require('./lib/weatherData');
@@ -23,7 +24,59 @@ app.engine('handlebars', handlebars.engine);
 app.set('view engine', 'handlebars');
 app.set('port', process.env.PORT || 3000);
 
+// 开发环境用彩色logging，生产环境用普通logging
+switch (app.get('env')) {
+    case 'development':
+        app.use(require('morgan')('dev'));
+        break;
+    case 'production':
+        app.use(require('express-logger')({
+            path: __dirname + '/log/requires.log'
+        }));
+        break;
+}
 
+// 使用域捕获异常 必须放在所有中间件和路由前面
+app.use(function(req, res, next) {
+    var domain = require('domain').create();
+    domain.on('error', function(err) {
+        console.error('DOMAIN ERROR GAUGHT\n', err.stack);
+        try {
+            // 在5秒内进行故障保护关机
+            setTimeout(function() {
+                console.error('安全关机');
+                process.exit(1);
+            }, 5000);
+
+            // 从集群中断开
+            var worker = require('cluster').worker;
+            if (worker) worker.disconnect();
+
+            // 停止接收新请求
+            server.close();
+
+            try {
+                // 尝试使用express错误路由
+                next(err);
+            } catch (error) {
+                // 使用原生node API响应客户端
+                console.error('Express 错误机制失败\n', err.stack);
+                res.statusCode = 500;
+                res.setHeader('Content-type', 'text/plain');
+                res.end('服务器错误');
+            }
+
+        } catch (err) {
+            console.error('Unable to send 500 response.\n', err.stack);
+        }
+    });
+    // 想域中添加请求和响应对象
+    domain.add(req);
+    domain.add(res);
+
+    // 执行该域中剩余的请求链
+    domain.run(next);
+});
 
 // 中间件
 app.use(express.static(__dirname + '/public'));
@@ -35,13 +88,14 @@ app.use(require('express-session')({ // 内存会话
     saveUninitialized: true
 }));
 
+// session test
 app.get('/session', function(req, res) {
     if (req.session.name) {
         console.log(req.session.name);
     }
     req.session.name = 'a';
     res.send('a');
-})
+});
 
 // qa
 app.use(function(req, res, next) {
@@ -49,12 +103,21 @@ app.use(function(req, res, next) {
     next();
 });
 
-// 中间件 收到请求后自动触发 向req.locals添加一条属性
+// 收到请求后自动触发 向req.locals添加一条属性 天气预报
 app.use(function(req, res, next) {
     if (!res.locals.partials) {
         res.locals.partials = {};
     }
     res.locals.partials.weather = weather.getWeatherData();
+    next();
+});
+
+// 查看处理请求的工作线程id
+app.use(function(req, res, next) {
+    var cluster = require('cluster');
+    if (cluster.isWorker) {
+        console.log('Worker %d received request', cluster.worker.id);
+    }
     next();
 });
 
@@ -77,6 +140,12 @@ app.get('/about', function(req, res) {
         pageTestScript: '/qa/tests-about.js'
     });
 });
+
+app.get('/fail', function(req, res) {
+    process.nextTick(function() {
+        throw new Error('kaboom!');
+    })
+})
 
 app.get('/clear-cookie', function(req, res) {
     console.log(req.query.n);
@@ -318,6 +387,26 @@ app.use(function(err, req, res, next) {
     res.status(500).render('500', { info: err });
 });
 
-app.listen(app.get('port'), function() {
-    console.log('express started on http://localhost:' + app.get('port'));
-});
+// app.listen(app.get('port'), function() {
+//     console.log('express started on http://localhost:' + app.get('port'));
+// });
+
+
+/*http.createServer(app).listen(app.get('port'), function() {
+    console.log('Express started in ' + app.get('env') + ' mode on http://localhost:' + app.get('port'));
+});*/
+
+function startServer() {
+    http.createServer(app).listen(app.get('port'), function() {
+        console.log('Express started in ' + app.get('env') + ' mode on http://localhost:' + app.get('port'));
+    });
+}
+
+if (require.main === module) {
+    // 应用程序直接运行；启动应用服务器
+    startServer();
+} else {
+    // 应用程序作为一个模块通过"require" 引入: 导出函数
+    // 创建服务器
+    module.exports = startServer;
+}
