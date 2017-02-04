@@ -1,0 +1,12 @@
+<h1>假期</h1>
+{{#each vacations}}
+<div class="vacation">
+    <h3>{{name}} <span style="font-size: 12px;color: #ddd">已售:{{packagesSold}}份</span></h3>
+    <p>{{description}}</p>
+    {{#if inSeason}}
+    <span class="price">{{price}}</span>
+    <a href="/buy-now?sku={{sku}}" class="btn btn-default">Buy Now!</a> {{else}}
+    <span class="outOfSeason">很抱歉，这个假期目前不在旺季{{! The "notify me when this vacation is in season" page will be our next task. }}</span>
+    <a href="/notify-me-when-in-season?sku={{sku}}">假期来临时通知我</a> {{/if}}
+</div>
+{{/each}}

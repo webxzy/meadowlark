@@ -6,6 +6,13 @@ var credentials = require('./credentials.js');
 var emailService = require('./lib/email.js')(credentials);
 var formidable = require('formidable');
 var nodemailer = require('nodemailer');
+var fs = require('fs');
+var mongoose = require('mongoose');
+
+// 数据库模式模型
+var Vacation = require('./models/vacation.js');
+var VacationInSeasonListener = require('./models/vacationInSeasonListener.js');
+
 var app = express();
 var handlebars = require('express3-handlebars').create({
     defaultLayout: 'main',
@@ -24,17 +31,79 @@ app.engine('handlebars', handlebars.engine);
 app.set('view engine', 'handlebars');
 app.set('port', process.env.PORT || 3000);
 
+// 数据库配置
+var opts = {
+    server: {
+        socketOptions: { keepAlive: 1 }
+    }
+}
+
 // 开发环境用彩色logging，生产环境用普通logging
 switch (app.get('env')) {
     case 'development':
         app.use(require('morgan')('dev'));
+        mongoose.connect(credentials.mongo.development.connectionString, opts);
         break;
     case 'production':
         app.use(require('express-logger')({
             path: __dirname + '/log/requires.log'
         }));
+        mongoose.connect(credentials.mongo.development.connectionString, opts);
         break;
+    default:
+        throw new Error('未知的执行环境: ' + app.get('env'));
 }
+
+// 初始化数据库
+Vacation.find(function(err, vacations) {
+    // find方法会查找数据库中所有vacation实例，并将返回结果列表传给回调函数并调用
+    if (vacations.length) return;
+
+    // 实体 添加一些数据 后续封装一个方法
+    new Vacation({
+        name: 'Hood River Day Trip',
+        slug: 'hood-river-day-trip',
+        category: 'Day Trip',
+        sku: 'HR199',
+        description: 'Spend a day sailing on the Columbia and ' + 'enjoying craft beers in Hood River!',
+        priceInCents: 9995,
+        tags: ['day trip', 'hood river', 'sailing', 'windsurfing', 'breweries'],
+        inSeason: true,
+        maximumGuests: 16,
+        available: true,
+        packagesSold: 0,
+    }).save();
+
+    new Vacation({
+        name: 'Oregon Coast Getaway',
+        slug: 'oregon-coast-getaway',
+        category: 'Weekend Getaway',
+        sku: 'OC39',
+        description: 'Enjoy the ocean air and quaint coastal towns!',
+        priceInCents: 269995,
+        tags: ['weekend getaway', 'oregon coast', 'beachcombing'],
+        inSeason: false,
+        maximumGuests: 8,
+        available: true,
+        packagesSold: 0,
+    }).save();
+
+    new Vacation({
+        name: 'Rock Climbing in Bend',
+        slug: 'rock-climbing-in-bend',
+        category: 'Adventure',
+        sku: 'B99',
+        description: 'Experience the thrill of climbing in the high desert.',
+        priceInCents: 289995,
+        tags: ['weekend getaway', 'bend', 'high desert', 'rock climbing'],
+        inSeason: true,
+        requiresWaiver: true,
+        maximumGuests: 4,
+        available: false,
+        packagesSold: 0,
+        notes: 'The tour guide is currently recovering from a skiing accident.',
+    }).save();
+});
 
 // 使用域捕获异常 必须放在所有中间件和路由前面
 app.use(function(req, res, next) {
@@ -70,7 +139,7 @@ app.use(function(req, res, next) {
             console.error('Unable to send 500 response.\n', err.stack);
         }
     });
-    // 想域中添加请求和响应对象
+    // 向域中添加请求和响应对象
     domain.add(req);
     domain.add(res);
 
@@ -88,6 +157,19 @@ app.use(require('express-session')({ // 内存会话
     saveUninitialized: true
 }));
 
+// qa
+app.use(function(req, res, next) {
+    res.locals.showTests = app.get('env') !== 'production' && req.query.test === '1';
+    next();
+});
+
+// 即显消息 使用内存存储
+app.use(function(req, res, next) {
+    res.locals.flash = req.session.flash;
+    delete req.session.flash;
+    next();
+});
+
 // session test
 app.get('/session', function(req, res) {
     if (req.session.name) {
@@ -97,13 +179,7 @@ app.get('/session', function(req, res) {
     res.send('a');
 });
 
-// qa
-app.use(function(req, res, next) {
-    res.locals.showTests = app.get('env') !== 'production' && req.query.test === '1';
-    next();
-});
-
-// 收到请求后自动触发 向req.locals添加一条属性 天气预报
+// 向req.locals添加一条属性天气预报
 app.use(function(req, res, next) {
     if (!res.locals.partials) {
         res.locals.partials = {};
@@ -140,6 +216,86 @@ app.get('/about', function(req, res) {
         pageTestScript: '/qa/tests-about.js'
     });
 });
+
+// 访问旅行产品 调用数据库数据
+app.get('/vacations', function(req, res) {
+    Vacation.find({ available: true }, function(err, vacations) {
+        var context = {
+            vacations: vacations.map(function(vacation) {
+                // 只暴露需要展示的数据
+                return {
+                    sku: vacation.sku,
+                    name: vacation.name,
+                    description: vacation.description,
+                    price: vacation.getDisplayPrice(),
+                    inSeason: vacation.inSeason,
+                    packagesSold: vacation.packagesSold
+                }
+            })
+        };
+        res.render('vacations', context);
+    });
+});
+
+app.get('/buy-now', function(req, res) {
+    var sku = req.query.sku;
+
+    Vacation.findOne({ sku: sku }, function(err, item) {
+        if (err) {
+            console.log(err.stack);
+            req.session.flash = {
+                type: 'danger',
+                intro: 'Ooops!',
+                message: '数据库错误'
+            }
+            return res.redirect(303, '/vacations');
+        }
+        Vacation.update({ sku: sku }, { packagesSold: item.packagesSold + 1 }, function(err) {
+            if (err) {
+                console.error(err.stack);
+                req.session.flash = {
+                    type: 'danger',
+                    intro: 'Ooops!',
+                    message: '数据库更新错误'
+                }
+                return res.redirect(303, '/vacations');
+            }
+            req.session.flash = {
+                type: 'success',
+                intro: '购买成功',
+                message: '订单信息稍后会发送到您的邮箱'
+            }
+            res.redirect(303, '/vacations');
+        });
+    });
+});
+
+app.get('/notify-me-when-in-season', function(req, res) {
+    res.render('notify-me-when-in-season', { sku: req.query.sku });
+});
+
+app.post('/notify-me-when-in-season', function(req, res) {
+    VacationInSeasonListener.update({ email: req.body.email }, { $push: { skus: req.body.sku } }, { upsert: true },
+        function(err) {
+            if (err) {
+                console.error(err.stack);
+                req.session.flash = {
+                    type: 'danger',
+                    intro: 'Ooops!',
+                    message: '数据库存储出现错误'
+                }
+                return res.redirect(303, '/vacations');
+            }
+            req.session.flash = {
+                type: 'success',
+                intro: '谢谢',
+                message: '你会在应季的时候收到邮件通知'
+            }
+            res.redirect(303, '/vacations');
+        }
+    )
+})
+
 
 app.get('/fail', function(req, res) {
     process.nextTick(function() {
@@ -188,13 +344,6 @@ app.get('/jq-test', function(req, res) {
 var NewsletterSignup = function() {};
 NewsletterSignup.prototype.save = function(cb) { cb() };
 
-// 即显消息 使用内存存储
-app.use(function(req, res, next) {
-    res.locals.flash = req.session.flash;
-    delete req.session.flash;
-    next();
-});
-
 // 订阅处理程序
 app.post('/process', function(req, res) {
     var name = req.body.name || '',
@@ -238,7 +387,7 @@ app.post('/process', function(req, res) {
 });
 
 
-// --------------- 购物车
+// --------------- 购物车 ---------------------
 
 // 编辑界面
 app.get('/tours/:tour', function(req, res) {
@@ -340,6 +489,8 @@ app.get('/cart-thankyou', function(req, res, next) {
     res.render('cart-thankyou', { cart: cart });
 });
 
+// ----------- 购物车 end ------------
+
 app.get('/newsletter', function(req, res) {
     res.render('newsletter');
 });
@@ -361,19 +512,50 @@ app.get('/contest/vacation-photo', function(req, res) {
     });
 });
 
+// 设置保存上传文件的目录
+var dataDir = __dirname + '/data';
+var vacationPhotoDir = dataDir + '/vacation-photo';
+fs.existsSync(dataDir) || fs.mkdirSync(dataDir);
+fs.existsSync(vacationPhotoDir) || fs.mkdirSync(vacationPhotoDir);
+
+function saveContestEntry(contestName, email, year, month, photoPath) {
+
+}
+
 // 上传图片处理程序
 app.post('/contest/vacation-photo/:year/:month', function(req, res) {
     var form = new formidable.IncomingForm();
     form.parse(req, function(err, fields, files) {
         if (err) {
-            return res.redirect(303, '/error');
+            req.session.flash = {
+                type: 'danger',
+                intro: '错误',
+                message: '提交错误，请再试一次'
+            }
+            return res.redirect(303, '/contest/vacation-photo');
         }
         console.log('收到 fields');
         console.log(fields);
         console.log('收到 files');
         console.log(files);
-        res.redirect(303, '/thank-you');
+        var photo = files.photo;
+        // 建立一个唯一目录，防止冲突
+        var dir = vacationPhotoDir + '/' + Date.now();
+        var path = dir + '/' + photo.name;
+        fs.mkdirSync(dir);
+        fs.renameSync(photo.path, dir + '/' + photo.name);
+        saveContestEntry('vacation-photo', fields.email, req.params.year, req.params.month, path);
+        req.session.flash = {
+            type: 'success',
+            intro: 'Good luck!',
+            message: '你保存了一个文件到contest'
+        }
+        res.redirect(303, '/contest/vacation-photo/entries');
     });
+});
+
+app.get('/contest/vacation-photo/entries', function(req, res) {
+    res.render('contest/vacation-photo/entries');
 });
 
 // 404
