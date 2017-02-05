@@ -19,3 +19,10 @@
         </div>
     </div>
 </form>
+<aside>
+    <h4>已经订阅者：</h4>
+    <ul>
+        {{# each carts}}
+        <li>{{name}} {{email}} {{time}}</li>{{/each}}
+    </ul>
+</aside>

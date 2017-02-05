@@ -13,7 +13,7 @@
     <header>
         <a href="http://localhost:3000"><img src="/imgs/baidu.jpg" alt="logo" width="100"></a>
     </header>
-    {{#if flash}}
+    {{> nav}} {{#if flash}}
     <div class="alert alert-dismissible alert-{{flash.type}}">
         <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
         <strong>{{flash.intro}} </strong>{{{flash.message}}}

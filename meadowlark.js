@@ -14,12 +14,11 @@ var mongoose = require('mongoose');
 var MongoSessionStore = require('session-mongoose')(require('connect'));
 var sessionStore = new MongoSessionStore({ url: credentials.mongo[app.get('env')].connectionString });
 
-
-
 // 数据库模式模型
 var Vacation = require('./models/vacation.js');
 var VacationInSeasonListener = require('./models/vacationInSeasonListener.js');
 var Records = require('./models/record.js');
+var Cart = require('./models/cart.js');
 
 // 模版引擎
 var handlebars = require('express3-handlebars').create({
@@ -160,12 +159,14 @@ app.use(function(req, res, next) {
 app.use(express.static(__dirname + '/public'));
 app.use(require('body-parser')()); // form表单
 app.use(require('cookie-parser')(credentials.cookieSecret)); // cookie解析
-// 使用内存存储回话数据
+
+// 使用内存存储会话数据
 /*app.use(require('express-session')({ // 内存会话
     secret: credentials.cookieSecret, // 与cookie-parser保持一致
     resave: true,
     saveUninitialized: true
 }));*/
+
 // 使用MongoDB存储会话数据
 app.use(require('express-session')({ store: sessionStore }));
 
@@ -270,7 +271,6 @@ app.get('/vacations', function(req, res) {
                 context.currencyRMB = 'selected';
                 break;
         }
-        console.log(context);
         res.render('vacations', context);
     });
 });
@@ -349,7 +349,7 @@ app.get('/record', function(req, res) {
                 intro: 'Ooops!',
                 message: '数据库错误！'
             }
-            return res.redirect(303, 'record');
+            return res.render('record');
         }
         res.render('record', { list: records });
     });
@@ -387,7 +387,7 @@ app.get('/delete-record/:id', function(req, res) {
         // 如果路由不带上 "/" 会出问题
         res.redirect(303, '/record');
     });
-})
+});
 
 app.get('/fail', function(req, res) {
     process.nextTick(function() {
@@ -430,6 +430,20 @@ app.get('/headers', function(req, res) {
 
 app.get('/jq-test', function(req, res) {
     res.render('jqueryTest');
+});
+
+// ----------------------------- 订阅简报 ------------------------
+
+app.get('/newsletter', function(req, res) {
+    res.render('newsletter');
+});
+
+app.get('/newsletter/archive', function(req, res) {
+    res.render('newsletter/archive');
+});
+
+app.get('/thank-you', function(req, res) {
+    res.render('thank-you', { name: req.query.name });
 });
 
 // 一个假数据库程序
@@ -478,7 +492,6 @@ app.post('/process', function(req, res) {
     });
 });
 
-
 // --------------- 购物车 ---------------------
 
 // 编辑界面
@@ -497,7 +510,7 @@ app.get('/tours/:tour', function(req, res) {
     res.render('tour', { tour: { name: name, tag: req.params.tour } });
 });
 
-// 提交编辑
+// 添加订单
 app.post('/cart/add', function(req, res) {
     var cart = req.session.cart || (req.session.cart = { items: [] });
     var items = cart.items;
@@ -539,19 +552,26 @@ app.get('/cart', function(req, res, next) {
     res.render('cart', { items: cart.items });
 })
 
-// 添加提交信息页
+// 提交购物页
 app.get('/cart/checkout', function(req, res, next) {
     var cart = req.session.cart;
     if (!cart) next();
-    res.render('cart-checkout');
+
+    // 显示已经订阅者
+    Cart.find(function(err, carts) {
+        console.log(carts);
+        res.render('cart-checkout', { carts: carts });
+    });
 });
 
 // 提交购物
 app.post('/cart/chcekout', function(req, res, next) {
     var cart = req.session.cart;
+
     if (!cart) {
         next(new Error('Cart does not exist.'));
     }
+
     var name = req.body.name,
         email = req.body.email;
 
@@ -564,14 +584,28 @@ app.post('/cart/chcekout', function(req, res, next) {
         email: email
     };
 
-    // render接收的第三个参数是个回调函数，函数接收渲染好的html，再执行相关操作，这样就不会渲染到浏览器端。
-    res.render('email/cart-thank-you', { layout: null, cart: cart }, function(err, html) {
+    var date = new Date();
+    var time = date.getFullYear() + '-' + (date.getMonth() + 1) + '-' + date.getDate();
+
+    new Cart({ name: name, email: email, time: time }).save(function(err) {
         if (err) {
-            console.log('email模版错误');
-            return next(err);
+            req.session.flash = {
+                type: 'danger',
+                intro: 'Ooops!',
+                message: '数据库错误！'
+            }
+            return res.redirect(303, '/cart/checkout');
         }
-        emailService.send(email, 'webxzy订单提醒', html);
-        res.redirect(303, '/cart-thankyou');
+
+        // render接收的第三个参数是个回调函数，函数接收渲染好的html，再执行相关操作，这样就不会渲染到浏览器端。
+        res.render('email/cart-thank-you', { layout: null, cart: cart }, function(err, html) {
+            if (err) {
+                console.log('email模版错误');
+                return next(err);
+            }
+            emailService.send(email, 'webxzy订单提醒', html);
+            res.redirect(303, '/cart-thankyou');
+        });
     });
 });
 
@@ -582,18 +616,6 @@ app.get('/cart-thankyou', function(req, res, next) {
 });
 
 // ----------- 购物车 end ------------
-
-app.get('/newsletter', function(req, res) {
-    res.render('newsletter');
-});
-
-app.get('/newsletter/archive', function(req, res) {
-    res.render('newsletter/archive');
-});
-
-app.get('/thank-you', function(req, res) {
-    res.render('thank-you', { name: req.query.name });
-});
 
 // 上传图片页面
 app.get('/contest/vacation-photo', function(req, res) {
@@ -610,9 +632,7 @@ var vacationPhotoDir = dataDir + '/vacation-photo';
 fs.existsSync(dataDir) || fs.mkdirSync(dataDir);
 fs.existsSync(vacationPhotoDir) || fs.mkdirSync(vacationPhotoDir);
 
-function saveContestEntry(contestName, email, year, month, photoPath) {
-
-}
+function saveContestEntry(contestName, email, year, month, photoPath) {}
 
 // 上传图片处理程序
 app.post('/contest/vacation-photo/:year/:month', function(req, res) {
