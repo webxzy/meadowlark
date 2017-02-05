@@ -1,0 +1,8 @@
+<form method="POST" action="/record">
+    <textarea rows="5" cols="60" name="text"></textarea><br>
+    <button type="submit">提交</button>
+</form>
+<ul>
+    {{#each list}}
+    <li>{{text}} <span style="color: #aaa; font-size: 12px">{{time}}</span> <a href="/delete-record/{{_id}}">&times</a></li> {{/each}}
+</ul>

@@ -1,5 +1,6 @@
 var http = require('http');
 var express = require('express');
+var app = express();
 var fortune = require('./lib/fortune.js');
 var weather = require('./lib/weatherData');
 var credentials = require('./credentials.js');
@@ -9,11 +10,18 @@ var nodemailer = require('nodemailer');
 var fs = require('fs');
 var mongoose = require('mongoose');
 
+// 使用MongoDB存储会话数据
+var MongoSessionStore = require('session-mongoose')(require('connect'));
+var sessionStore = new MongoSessionStore({ url: credentials.mongo[app.get('env')].connectionString });
+
+
+
 // 数据库模式模型
 var Vacation = require('./models/vacation.js');
 var VacationInSeasonListener = require('./models/vacationInSeasonListener.js');
+var Records = require('./models/record.js');
 
-var app = express();
+// 模版引擎
 var handlebars = require('express3-handlebars').create({
     defaultLayout: 'main',
     helpers: {
@@ -57,6 +65,7 @@ switch (app.get('env')) {
 // 初始化数据库
 Vacation.find(function(err, vacations) {
     // find方法会查找数据库中所有vacation实例，并将返回结果列表传给回调函数并调用
+    // console.log(vacations);
     if (vacations.length) return;
 
     // 实体 添加一些数据 后续封装一个方法
@@ -65,7 +74,7 @@ Vacation.find(function(err, vacations) {
         slug: 'hood-river-day-trip',
         category: 'Day Trip',
         sku: 'HR199',
-        description: 'Spend a day sailing on the Columbia and ' + 'enjoying craft beers in Hood River!',
+        description: 'Spend a day sailing on the Columbia and enjoying craft beers in Hood River!',
         priceInCents: 9995,
         tags: ['day trip', 'hood river', 'sailing', 'windsurfing', 'breweries'],
         inSeason: true,
@@ -151,11 +160,14 @@ app.use(function(req, res, next) {
 app.use(express.static(__dirname + '/public'));
 app.use(require('body-parser')()); // form表单
 app.use(require('cookie-parser')(credentials.cookieSecret)); // cookie解析
-app.use(require('express-session')({ // 内存会话
+// 使用内存存储回话数据
+/*app.use(require('express-session')({ // 内存会话
     secret: credentials.cookieSecret, // 与cookie-parser保持一致
     resave: true,
     saveUninitialized: true
-}));
+}));*/
+// 使用MongoDB存储会话数据
+app.use(require('express-session')({ store: sessionStore }));
 
 // qa
 app.use(function(req, res, next) {
@@ -217,9 +229,23 @@ app.get('/about', function(req, res) {
     });
 });
 
+function convertFromUSD(val, currency) {
+    switch (currency) {
+        case 'USD':
+            return val * 1;
+        case 'GBP':
+            return val * 0.6;
+        case 'RMB':
+            return val * 6.6;
+        default:
+            return NaN;
+    }
+}
+
 // 访问旅行产品 调用数据库数据
 app.get('/vacations', function(req, res) {
     Vacation.find({ available: true }, function(err, vacations) {
+        var currency = req.session.currency || 'USD';
         var context = {
             vacations: vacations.map(function(vacation) {
                 // 只暴露需要展示的数据
@@ -227,12 +253,24 @@ app.get('/vacations', function(req, res) {
                     sku: vacation.sku,
                     name: vacation.name,
                     description: vacation.description,
-                    price: vacation.getDisplayPrice(),
+                    price: convertFromUSD(vacation.priceInCents / 100, currency),
                     inSeason: vacation.inSeason,
                     packagesSold: vacation.packagesSold
                 }
             })
         };
+        switch (currency) {
+            case 'USD':
+                context.currencyUSD = 'selected';
+                break;
+            case 'GBP':
+                context.currencyGBP = 'selected';
+                break;
+            case 'RMB':
+                context.currencyRMB = 'selected';
+                break;
+        }
+        console.log(context);
         res.render('vacations', context);
     });
 });
@@ -294,8 +332,62 @@ app.post('/notify-me-when-in-season', function(req, res) {
             res.redirect(303, '/vacations');
         }
     )
-})
+});
 
+// 价格转换
+app.get('/set-currency/:currency', function(req, res) {
+    req.session.currency = req.params.currency;
+    return res.redirect(303, '/vacations');
+});
+
+// 记录本
+app.get('/record', function(req, res) {
+    Records.find(function(err, records) {
+        if (err) {
+            req.session.flash = {
+                type: 'danger',
+                intro: 'Ooops!',
+                message: '数据库错误！'
+            }
+            return res.redirect(303, 'record');
+        }
+        res.render('record', { list: records });
+    });
+});
+
+app.post('/record', function(req, res) {
+    var date = new Date();
+    var time = date.getFullYear() + '-' + (date.getMonth() + 1) + '-' + date.getDate();
+    new Records({
+        text: req.body.text,
+        time: time
+    }).save(function(err) {
+        if (err) {
+            req.session.flash = {
+                type: 'danger',
+                intro: 'Ooops!',
+                message: '数据库错误！'
+            }
+            return res.redirect(303, 'record');
+        }
+        res.redirect(303, 'record');
+    });
+});
+
+app.get('/delete-record/:id', function(req, res) {
+    Records.findByIdAndRemove(req.params.id, function(err, item) {
+        if (err) {
+            req.session.flash = {
+                type: 'danger',
+                intro: 'Ooops!',
+                message: '数据库错误！'
+            }
+            return res.redirect(303, 'record');
+        }
+        // 如果路由不带上 "/" 会出问题
+        res.redirect(303, '/record');
+    });
+})
 
 app.get('/fail', function(req, res) {
     process.nextTick(function() {
