@@ -15,9 +15,6 @@ var MongoSessionStore = require('session-mongoose')(require('connect'));
 var sessionStore = new MongoSessionStore({ url: credentials.mongo[app.get('env')].connectionString });
 
 // 数据库模式模型
-var Vacation = require('./models/vacation.js');
-var VacationInSeasonListener = require('./models/vacationInSeasonListener.js');
-var Records = require('./models/record.js');
 var Cart = require('./models/cart.js');
 
 // 模版引擎
@@ -60,58 +57,6 @@ switch (app.get('env')) {
     default:
         throw new Error('未知的执行环境: ' + app.get('env'));
 }
-
-// 初始化数据库
-Vacation.find(function(err, vacations) {
-    // find方法会查找数据库中所有vacation实例，并将返回结果列表传给回调函数并调用
-    // console.log(vacations);
-    if (vacations.length) return;
-
-    // 实体 添加一些数据 后续封装一个方法
-    new Vacation({
-        name: 'Hood River Day Trip',
-        slug: 'hood-river-day-trip',
-        category: 'Day Trip',
-        sku: 'HR199',
-        description: 'Spend a day sailing on the Columbia and enjoying craft beers in Hood River!',
-        priceInCents: 9995,
-        tags: ['day trip', 'hood river', 'sailing', 'windsurfing', 'breweries'],
-        inSeason: true,
-        maximumGuests: 16,
-        available: true,
-        packagesSold: 0,
-    }).save();
-
-    new Vacation({
-        name: 'Oregon Coast Getaway',
-        slug: 'oregon-coast-getaway',
-        category: 'Weekend Getaway',
-        sku: 'OC39',
-        description: 'Enjoy the ocean air and quaint coastal towns!',
-        priceInCents: 269995,
-        tags: ['weekend getaway', 'oregon coast', 'beachcombing'],
-        inSeason: false,
-        maximumGuests: 8,
-        available: true,
-        packagesSold: 0,
-    }).save();
-
-    new Vacation({
-        name: 'Rock Climbing in Bend',
-        slug: 'rock-climbing-in-bend',
-        category: 'Adventure',
-        sku: 'B99',
-        description: 'Experience the thrill of climbing in the high desert.',
-        priceInCents: 289995,
-        tags: ['weekend getaway', 'bend', 'high desert', 'rock climbing'],
-        inSeason: true,
-        requiresWaiver: true,
-        maximumGuests: 4,
-        available: false,
-        packagesSold: 0,
-        notes: 'The tour guide is currently recovering from a skiing accident.',
-    }).save();
-});
 
 // 使用域捕获异常 必须放在所有中间件和路由前面
 app.use(function(req, res, next) {
@@ -183,6 +128,31 @@ app.use(function(req, res, next) {
     next();
 });
 
+// 导航选择高亮
+app.use(function(req, res, next) {
+    console.log(req.path)
+    switch (req.path) {
+        case '/record':
+            res.locals.record = 'active';
+            break;
+        case '/vacations':
+            res.locals.tour = 'active';
+            break;
+        case '/newsletter':
+            res.locals.newsletter = 'active';
+            break;
+        case '/contest/vacation-photo':
+            res.locals.vacationPhoto = 'active';
+            break;
+        case '/about':
+            res.locals.about = 'active';
+            break;
+        default:
+            res.locals.home = 'active';
+    }
+    next();
+});
+
 // session test
 app.get('/session', function(req, res) {
     if (req.session.name) {
@@ -215,7 +185,7 @@ app.get('/', function(req, res) {
     res.render('home');
 });
 
-app.get('/about', function(req, res) {
+app.get('/about|a', function(req, res) {
     console.log(req.cookies); // 获取普通cookie
     console.log(req.signedCookies); // 获取签名cookie
 
@@ -230,170 +200,13 @@ app.get('/about', function(req, res) {
     });
 });
 
-function convertFromUSD(val, currency) {
-    switch (currency) {
-        case 'USD':
-            return val * 1;
-        case 'GBP':
-            return val * 0.6;
-        case 'RMB':
-            return val * 6.6;
-        default:
-            return NaN;
-    }
-}
-
-// 访问旅行产品 调用数据库数据
-app.get('/vacations', function(req, res) {
-    Vacation.find({ available: true }, function(err, vacations) {
-        var currency = req.session.currency || 'USD';
-        var context = {
-            vacations: vacations.map(function(vacation) {
-                // 只暴露需要展示的数据
-                return {
-                    sku: vacation.sku,
-                    name: vacation.name,
-                    description: vacation.description,
-                    price: convertFromUSD(vacation.priceInCents / 100, currency),
-                    inSeason: vacation.inSeason,
-                    packagesSold: vacation.packagesSold
-                }
-            })
-        };
-        switch (currency) {
-            case 'USD':
-                context.currencyUSD = 'selected';
-                break;
-            case 'GBP':
-                context.currencyGBP = 'selected';
-                break;
-            case 'RMB':
-                context.currencyRMB = 'selected';
-                break;
-        }
-        res.render('vacations', context);
-    });
-});
-
-app.get('/buy-now', function(req, res) {
-    var sku = req.query.sku;
-
-    Vacation.findOne({ sku: sku }, function(err, item) {
-        if (err) {
-            console.log(err.stack);
-            req.session.flash = {
-                type: 'danger',
-                intro: 'Ooops!',
-                message: '数据库错误'
-            }
-            return res.redirect(303, '/vacations');
-        }
-        Vacation.update({ sku: sku }, { packagesSold: item.packagesSold + 1 }, function(err) {
-            if (err) {
-                console.error(err.stack);
-                req.session.flash = {
-                    type: 'danger',
-                    intro: 'Ooops!',
-                    message: '数据库更新错误'
-                }
-                return res.redirect(303, '/vacations');
-            }
-            req.session.flash = {
-                type: 'success',
-                intro: '购买成功',
-                message: '订单信息稍后会发送到您的邮箱'
-            }
-            res.redirect(303, '/vacations');
-        });
-    });
-});
-
-app.get('/notify-me-when-in-season', function(req, res) {
-    res.render('notify-me-when-in-season', { sku: req.query.sku });
-});
-
-app.post('/notify-me-when-in-season', function(req, res) {
-    VacationInSeasonListener.update({ email: req.body.email }, { $push: { skus: req.body.sku } }, { upsert: true },
-        function(err) {
-            if (err) {
-                console.error(err.stack);
-                req.session.flash = {
-                    type: 'danger',
-                    intro: 'Ooops!',
-                    message: '数据库存储出现错误'
-                }
-                return res.redirect(303, '/vacations');
-            }
-            req.session.flash = {
-                type: 'success',
-                intro: '谢谢',
-                message: '你会在应季的时候收到邮件通知'
-            }
-            res.redirect(303, '/vacations');
-        }
-    )
-});
-
-// 价格转换
-app.get('/set-currency/:currency', function(req, res) {
-    req.session.currency = req.params.currency;
-    return res.redirect(303, '/vacations');
-});
-
-// 记录本
-app.get('/record', function(req, res) {
-    Records.find(function(err, records) {
-        if (err) {
-            req.session.flash = {
-                type: 'danger',
-                intro: 'Ooops!',
-                message: '数据库错误！'
-            }
-            return res.render('record');
-        }
-        res.render('record', { list: records });
-    });
-});
-
-app.post('/record', function(req, res) {
-    var date = new Date();
-    var time = date.getFullYear() + '-' + (date.getMonth() + 1) + '-' + date.getDate();
-    new Records({
-        text: req.body.text,
-        time: time
-    }).save(function(err) {
-        if (err) {
-            req.session.flash = {
-                type: 'danger',
-                intro: 'Ooops!',
-                message: '数据库错误！'
-            }
-            return res.redirect(303, 'record');
-        }
-        res.redirect(303, 'record');
-    });
-});
-
-app.get('/delete-record/:id', function(req, res) {
-    Records.findByIdAndRemove(req.params.id, function(err, item) {
-        if (err) {
-            req.session.flash = {
-                type: 'danger',
-                intro: 'Ooops!',
-                message: '数据库错误！'
-            }
-            return res.redirect(303, 'record');
-        }
-        // 如果路由不带上 "/" 会出问题
-        res.redirect(303, '/record');
-    });
-});
+require('./routes')(app);
 
 app.get('/fail', function(req, res) {
     process.nextTick(function() {
         throw new Error('kaboom!');
     })
-})
+});
 
 app.get('/clear-cookie', function(req, res) {
     console.log(req.query.n);

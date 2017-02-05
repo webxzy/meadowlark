@@ -6,3 +6,13 @@ a.currency {
     font-weight: bold;
     font-size: 150%;
 }
+
+nav .active {
+    color: blue;
+    font-weight: bold;
+}
+
+nav .active:hover {
+    text-decoration: none;
+    cursor: default;
+}
