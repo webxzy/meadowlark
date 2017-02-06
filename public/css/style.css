@@ -8,8 +8,8 @@ a.currency {
 }
 
 nav .active {
-    color: blue;
-    font-weight: bold;
+    color: #fff;
+    background: #337ab7;
 }
 
 nav .active:hover {

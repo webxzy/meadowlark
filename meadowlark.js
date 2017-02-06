@@ -5,7 +5,6 @@ var fortune = require('./lib/fortune.js');
 var weather = require('./lib/weatherData');
 var credentials = require('./credentials.js');
 var emailService = require('./lib/email.js')(credentials);
-var formidable = require('formidable');
 var nodemailer = require('nodemailer');
 var fs = require('fs');
 var mongoose = require('mongoose');
@@ -128,7 +127,7 @@ app.use(function(req, res, next) {
     next();
 });
 
-// 导航选择高亮
+// 导航高亮
 app.use(function(req, res, next) {
     console.log(req.path)
     switch (req.path) {
@@ -242,68 +241,12 @@ app.get('/headers', function(req, res) {
 });
 
 app.get('/jq-test', function(req, res) {
-    res.render('jqueryTest');
+    res.render('jquery-test');
 });
 
-// ----------------------------- 订阅简报 ------------------------
-
-app.get('/newsletter', function(req, res) {
-    res.render('newsletter');
-});
-
-app.get('/newsletter/archive', function(req, res) {
-    res.render('newsletter/archive');
-});
-
-app.get('/thank-you', function(req, res) {
+/*app.get('/thank-you', function(req, res) {
     res.render('thank-you', { name: req.query.name });
-});
-
-// 一个假数据库程序
-var NewsletterSignup = function() {};
-NewsletterSignup.prototype.save = function(cb) { cb() };
-
-// 订阅处理程序
-app.post('/process', function(req, res) {
-    var name = req.body.name || '',
-        email = req.body.email || ''
-        // 数据校验
-    if (email.indexOf('@') === -1) {
-        if (req.xhr) {
-            return res.json({ error: '无效的 email address' });
-        }
-        req.session.flash = {
-            type: 'danger',
-            intro: '邮箱错误',
-            message: '您输入的电子邮件地址无效'
-        };
-        return res.redirect(303, '/newsletter/archive');
-    }
-
-    // 存储到数据库
-    new NewsletterSignup({ name: name, email: email }).save(function(err) {
-        if (err) {
-            if (req.xhr) {
-                return res.json({ error: '数据库错误' });
-            }
-            req.session.flash = {
-                type: 'danger',
-                intro: '数据库错误',
-                message: '数据库发生了一个未知错误，请稍后再试！'
-            }
-            return res.redirect(303, '/newsletter/archive');
-        }
-        if (req.xhr) {
-            return res.json({ success: true });
-        }
-        req.session.flash = {
-            type: 'success',
-            intro: '谢谢',
-            message: '你已经报名成功！'
-        }
-        return res.redirect(303, '/newsletter/archive');
-    });
-});
+});*/
 
 // --------------- 购物车 ---------------------
 
@@ -430,57 +373,18 @@ app.get('/cart-thankyou', function(req, res, next) {
 
 // ----------- 购物车 end ------------
 
-// 上传图片页面
-app.get('/contest/vacation-photo', function(req, res) {
-    var t = new Date();
-    res.render('contest/vacation-photo', {
-        year: t.getFullYear(),
-        month: t.getMonth()
-    });
-});
-
-// 设置保存上传文件的目录
-var dataDir = __dirname + '/data';
-var vacationPhotoDir = dataDir + '/vacation-photo';
-fs.existsSync(dataDir) || fs.mkdirSync(dataDir);
-fs.existsSync(vacationPhotoDir) || fs.mkdirSync(vacationPhotoDir);
-
-function saveContestEntry(contestName, email, year, month, photoPath) {}
-
-// 上传图片处理程序
-app.post('/contest/vacation-photo/:year/:month', function(req, res) {
-    var form = new formidable.IncomingForm();
-    form.parse(req, function(err, fields, files) {
-        if (err) {
-            req.session.flash = {
-                type: 'danger',
-                intro: '错误',
-                message: '提交错误，请再试一次'
-            }
-            return res.redirect(303, '/contest/vacation-photo');
-        }
-        console.log('收到 fields');
-        console.log(fields);
-        console.log('收到 files');
-        console.log(files);
-        var photo = files.photo;
-        // 建立一个唯一目录，防止冲突
-        var dir = vacationPhotoDir + '/' + Date.now();
-        var path = dir + '/' + photo.name;
-        fs.mkdirSync(dir);
-        fs.renameSync(photo.path, dir + '/' + photo.name);
-        saveContestEntry('vacation-photo', fields.email, req.params.year, req.params.month, path);
-        req.session.flash = {
-            type: 'success',
-            intro: 'Good luck!',
-            message: '你保存了一个文件到contest'
-        }
-        res.redirect(303, '/contest/vacation-photo/entries');
-    });
-});
-
-app.get('/contest/vacation-photo/entries', function(req, res) {
-    res.render('contest/vacation-photo/entries');
+// 自动视图 (比较适合简单页面展示)
+var autoViews = {};
+app.use(function(req, res, next) {
+    var path = req.path.toLocaleLowerCase();
+    if (autoViews[path]) {
+        return res.render(autoViews[path]);
+    }
+    if (fs.existsSync(__dirname + '/views' + path + '.handlebars')) {
+        autoViews[path] = path.replace(/^\//, '');
+        return res.render(autoViews[path]);
+    }
+    next();
 });
 
 // 404
@@ -494,13 +398,8 @@ app.use(function(err, req, res, next) {
     res.status(500).render('500', { info: err });
 });
 
-// app.listen(app.get('port'), function() {
-//     console.log('express started on http://localhost:' + app.get('port'));
-// });
-
-
-/*http.createServer(app).listen(app.get('port'), function() {
-    console.log('Express started in ' + app.get('env') + ' mode on http://localhost:' + app.get('port'));
+/*app.listen(app.get('port'), function() {
+    console.log('express started on http://localhost:' + app.get('port'));
 });*/
 
 function startServer() {
