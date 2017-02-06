@@ -8,6 +8,8 @@ var emailService = require('./lib/email.js')(credentials);
 var nodemailer = require('nodemailer');
 var fs = require('fs');
 var mongoose = require('mongoose');
+var cors = require('cors');
+var vhost = require('vhost');
 
 // 使用MongoDB存储会话数据
 var MongoSessionStore = require('session-mongoose')(require('connect'));
@@ -114,6 +116,9 @@ app.use(require('cookie-parser')(credentials.cookieSecret)); // cookie解析
 // 使用MongoDB存储会话数据
 app.use(require('express-session')({ store: sessionStore }));
 
+// 跨域
+app.use('/api', cors());
+
 // qa
 app.use(function(req, res, next) {
     res.locals.showTests = app.get('env') !== 'production' && req.query.test === '1';
@@ -129,7 +134,6 @@ app.use(function(req, res, next) {
 
 // 导航高亮
 app.use(function(req, res, next) {
-    console.log(req.path)
     switch (req.path) {
         case '/record':
             res.locals.record = 'active';
@@ -179,14 +183,21 @@ app.use(function(req, res, next) {
     next();
 });
 
+// 博客 blog.localhost:3000 一般的二级域名需要放到前面
+var blog = express.Router();
+app.use(vhost('blog.*', blog));
+blog.get('/', function(req, res) {
+    res.render('blog/home', { layout: null });
+});
+
 // 首页
 app.get('/', function(req, res) {
     res.render('home');
 });
 
 app.get('/about|a', function(req, res) {
-    console.log(req.cookies); // 获取普通cookie
-    console.log(req.signedCookies); // 获取签名cookie
+    // console.log(req.cookies); // 获取普通cookie
+    // console.log(req.signedCookies); // 获取签名cookie
 
     // 设置一个cookie
     res.cookie('about', 'pass');
@@ -306,7 +317,7 @@ app.get('/cart', function(req, res, next) {
         next();
     }
     res.render('cart', { items: cart.items });
-})
+});
 
 // 提交购物页
 app.get('/cart/checkout', function(req, res, next) {
@@ -315,7 +326,6 @@ app.get('/cart/checkout', function(req, res, next) {
 
     // 显示已经订阅者
     Cart.find(function(err, carts) {
-        console.log(carts);
         res.render('cart-checkout', { carts: carts });
     });
 });
@@ -371,8 +381,6 @@ app.get('/cart-thankyou', function(req, res, next) {
     res.render('cart-thankyou', { cart: cart });
 });
 
-// ----------- 购物车 end ------------
-
 // 自动视图 (比较适合简单页面展示)
 var autoViews = {};
 app.use(function(req, res, next) {
@@ -385,6 +393,79 @@ app.use(function(req, res, next) {
         return res.render(autoViews[path]);
     }
     next();
+});
+
+
+// ------------------ REST ---------------------------
+var Attraction = require('./models/attraction.js');
+var rest = require('connect-rest');
+
+// 以下请求都是通过 api.localhost:3000/attractions 来访问
+rest.get('/attractions', function(req, content, cb) {
+    Attraction.find({ approved: false }, function(err, attractions) {
+        if (err) return cb({ error: '数据库错误' }) //res.send(500, '数据库错误');
+        cb(null, attractions.map(function(item) {
+            return {
+                name: item.name,
+                id: item._id,
+                description: item.description,
+                location: item.location
+            }
+        }));
+    });
+});
+
+rest.post('/add-attraction', function(req, content, cb) {
+    var item = new Attraction({
+        name: req.body.name,
+        description: req.body.description,
+        location: { lat: req.body.lat, lng: req.body.lng },
+        history: {
+            event: 'created',
+            email: req.body.email,
+            date: new Date()
+        },
+        approved: false
+    });
+
+    item.save(function(err, attraction) {
+        if (err) return cb({ error: '数据库错误' }) // res.send(500, '数据库错误');
+        cb(null, { id: attraction._id });
+    });
+});
+
+rest.get('/attraction/:id', function(req, content, cb) {
+    Attraction.findById(req.params.id, function(err, item) {
+        if (err) return cb({ error: '数据库错误' }) // res.send(500, '数据库错误');
+        cb(null, {
+            name: item.name,
+            id: item._id,
+            description: item.description,
+            location: item.location
+        });
+    });
+});
+
+var apiOptions = {
+    context: '/', // 如果这里不用子域名，而是通过域名后路径访问，就要填 '/api',
+    domain: require('domain').create()
+}
+
+// 添加子域
+app.use(vhost('api.*', rest.rester(apiOptions)));
+
+// 使用域 + 路由访问上面的路由
+// app.use(rest.rester(apiOptions));
+
+apiOptions.domain.on('error', function(err) {
+    console.log('API domain error.\n', err.stack);
+    setTimeout(function() {
+        console.log('Server shutting down after API domain error.');
+        process.exit(1);
+    }, 5000);
+    server.close();
+    var worker = require('cluster').worker;
+    if (worker) worker.disconnect();
 });
 
 // 404
