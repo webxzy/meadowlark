@@ -30,7 +30,7 @@ module.exports = function(app) {
     // 热门地点 api
     // app.get('/attractions', attraction.getAttractions);
     // app.get('/attraction/:id', attraction.getAttraction);
-    app.get('/api/attraction', attraction.attraction);
+    // app.get('/api/attraction', attraction.attraction);
     // app.post('/post-attraction', attraction.postAttraction);
 
 }

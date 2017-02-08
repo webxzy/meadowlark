@@ -1,11 +1,11 @@
 var loadtest = require('loadtest');
 var expect = require('chai').expect;
-suite('Stress tests', function() {
-    test('Homepage should handle 100 requests in a second', function(done) {
+suite('并发测试', function() {
+    test('首页每秒应处理50个请求', function(done) {
         var options = {
             url: 'http://localhost:3000',
             concurrency: 4,
-            maxRequests: 1000
+            maxRequests: 50
         };
         loadtest.loadTest(options, function(err, result) {
             expect(!err);

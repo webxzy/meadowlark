@@ -1,0 +1,1 @@
+$(document).ready(function(){console.log("购物车")});var fdsfew=function(){alert(1111)};$(document).ready(function(){console.log("联系我们")}),$(document).ready(function(){console.log("购物车")}),$(document).ready(function(){console.log("联系我们")});

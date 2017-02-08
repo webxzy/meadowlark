@@ -22,19 +22,31 @@ var Cart = require('./models/cart.js');
 var handlebars = require('express3-handlebars').create({
     defaultLayout: 'main',
     helpers: {
-        // 段落 可以从视图传递数据到布局的{{body}}区以外的地方
+        // 段落 可以从视图传递数据到布局{{body}}区以外的地方
         section: function(name, options) {
             if (!this._sections) {
                 this._sections = {};
             }
             this._sections[name] = options.fn(this);
             return null;
+        },
+        // 资源重定位
+        static: function(name) {
+            return require('./lib/static.js').mapping(name);
         }
     }
 });
+
+// 指定为生产环境
+// app.set('env', 'production');
+
 app.engine('handlebars', handlebars.engine);
 app.set('view engine', 'handlebars');
 app.set('port', process.env.PORT || 3000);
+
+// 根据开发环境自动切换未打包或已打包的js和css文件
+var bundler = require('connect-bundle')(require('./config.js'));
+app.use(bundler);
 
 // 数据库配置
 var opts = {
@@ -134,25 +146,40 @@ app.use(function(req, res, next) {
 
 // 导航高亮
 app.use(function(req, res, next) {
+    res.locals.nav = {};
+
+    /*// 正式网站可以使用这种方式
+    var ps = req.path.replace(/\//g, '');
+    console.log(ps);
+    if(ps) {
+        res.locals.nav[ps] = 'active';
+    } else {
+        res.locals.nav.home = 'active';
+    }*/
+    
     switch (req.path) {
         case '/record':
-            res.locals.record = 'active';
+            res.locals.nav.record = 'active';
             break;
         case '/vacations':
-            res.locals.tour = 'active';
+            res.locals.nav.tour = 'active';
             break;
         case '/newsletter':
-            res.locals.newsletter = 'active';
+            res.locals.nav.newsletter = 'active';
             break;
         case '/contest/vacation-photo':
-            res.locals.vacationPhoto = 'active';
+            res.locals.nav.vacationPhoto = 'active';
             break;
         case '/about':
-            res.locals.about = 'active';
+            res.locals.nav.about = 'active';
+            break;
+        case '/attraction':
+            res.locals.nav.attraction = 'active';
             break;
         default:
-            res.locals.home = 'active';
+            res.locals.nav.home = 'active';
     }
+
     next();
 });
 
@@ -185,9 +212,16 @@ app.use(function(req, res, next) {
 
 // 博客 blog.localhost:3000 一般的二级域名需要放到前面
 var blog = express.Router();
+var api = express.Router();
 app.use(vhost('blog.*', blog));
+app.use(vhost('api.*', api));
+
 blog.get('/', function(req, res) {
     res.render('blog/home', { layout: null });
+});
+
+api.get('/attraction', function(req, res) {
+    res.render('api/attraction');
 });
 
 // 首页
@@ -195,7 +229,7 @@ app.get('/', function(req, res) {
     res.render('home');
 });
 
-app.get('/about|a', function(req, res) {
+app.get('/about', function(req, res) {
     // console.log(req.cookies); // 获取普通cookie
     // console.log(req.signedCookies); // 获取签名cookie
 
@@ -212,11 +246,11 @@ app.get('/about|a', function(req, res) {
 
 require('./routes')(app);
 
-app.get('/fail', function(req, res) {
+/*app.get('/fail', function(req, res) {
     process.nextTick(function() {
         throw new Error('kaboom!');
     })
-});
+});*/
 
 app.get('/clear-cookie', function(req, res) {
     console.log(req.query.n);
@@ -381,21 +415,6 @@ app.get('/cart-thankyou', function(req, res, next) {
     res.render('cart-thankyou', { cart: cart });
 });
 
-// 自动视图 (比较适合简单页面展示)
-var autoViews = {};
-app.use(function(req, res, next) {
-    var path = req.path.toLocaleLowerCase();
-    if (autoViews[path]) {
-        return res.render(autoViews[path]);
-    }
-    if (fs.existsSync(__dirname + '/views' + path + '.handlebars')) {
-        autoViews[path] = path.replace(/^\//, '');
-        return res.render(autoViews[path]);
-    }
-    next();
-});
-
-
 // ------------------ REST ---------------------------
 var Attraction = require('./models/attraction.js');
 var rest = require('connect-rest');
@@ -451,10 +470,10 @@ var apiOptions = {
     domain: require('domain').create()
 }
 
-// 添加子域
+// 使用子域访问 api.localhost/attractions
 app.use(vhost('api.*', rest.rester(apiOptions)));
 
-// 使用域 + 路由访问上面的路由
+// 使用域 + 路由访问上面的路由 localhost/attractions
 // app.use(rest.rester(apiOptions));
 
 apiOptions.domain.on('error', function(err) {
@@ -467,6 +486,20 @@ apiOptions.domain.on('error', function(err) {
     var worker = require('cluster').worker;
     if (worker) worker.disconnect();
 });
+
+// 自动视图 (上面都匹配不到，会自动进入views寻找，比较适合简单页面展示)
+/*var autoViews = {};
+app.use(function(req, res, next) {
+    var path = req.path.toLocaleLowerCase();
+    if (autoViews[path]) {
+        return res.render(autoViews[path]);
+    }
+    if (fs.existsSync(__dirname + '/views' + path + '.handlebars')) {
+        autoViews[path] = path.replace(/^\//, '');
+        return res.render(autoViews[path]);
+    }
+    next();
+});*/
 
 // 404
 app.use(function(req, res) {

@@ -1,0 +1,18 @@
+body {
+  background-image: url("/imgs/background.png");
+}
+a.currency {
+  text-decoration: none;
+}
+.currency.selected {
+  font-weight: bold;
+  font-size: 150%;
+}
+nav .active {
+  color: #fff;
+  background: #337ab7;
+}
+nav .active:hover {
+  text-decoration: none;
+  cursor: default;
+}
