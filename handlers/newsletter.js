@@ -1,4 +1,6 @@
 exports.newsletter = function(req, res) {
+    // 跨站请求伪造
+    res.locals._csrfToken = req.csrfToken();
     res.render('newsletter');
 };
 

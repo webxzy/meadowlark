@@ -11,10 +11,6 @@ var mongoose = require('mongoose');
 var cors = require('cors');
 var vhost = require('vhost');
 
-// 使用MongoDB存储会话数据
-var MongoSessionStore = require('session-mongoose')(require('connect'));
-var sessionStore = new MongoSessionStore({ url: credentials.mongo[app.get('env')].connectionString });
-
 // 数据库模式模型
 var Cart = require('./models/cart.js');
 
@@ -37,39 +33,48 @@ var handlebars = require('express3-handlebars').create({
     }
 });
 
-// 指定为生产环境
-// app.set('env', 'production');
-
 app.engine('handlebars', handlebars.engine);
 app.set('view engine', 'handlebars');
 app.set('port', process.env.PORT || 3000);
+
+// 指定为生产环境
+// app.set('env', 'production');
 
 // 根据开发环境自动切换未打包或已打包的js和css文件
 var bundler = require('connect-bundle')(require('./config.js'));
 app.use(bundler);
 
-// 数据库配置
-var opts = {
-    server: {
-        socketOptions: { keepAlive: 1 }
-    }
-}
-
 // 开发环境用彩色logging，生产环境用普通logging
 switch (app.get('env')) {
     case 'development':
         app.use(require('morgan')('dev'));
-        mongoose.connect(credentials.mongo.development.connectionString, opts);
+        
+        // 线上数据库
+        // mongoose.connect(credentials.mongo.development.connectionString);
+
+        // 本地数据库
+        mongoose.connect('mongodb://localhost/meadowlark_dev');
         break;
     case 'production':
         app.use(require('express-logger')({
             path: __dirname + '/log/requires.log'
         }));
-        mongoose.connect(credentials.mongo.development.connectionString, opts);
+
+        // 线上数据库
+        // mongoose.connect(credentials.mongo.development.connectionString);
+
+        // 本地数据库
+        mongoose.connect('mongodb://localhost/meadowlark');
         break;
     default:
-        throw new Error('未知的执行环境: ' + app.get('env'));
+        // throw new Error('未知的执行环境: ' + app.get('env'));
 }
+
+// 使用MongoDB存储会话数据
+var MongoSessionStore = require('session-mongoose')(require('connect'));
+
+// var sessionStore = new MongoSessionStore({ url: credentials.mongo[app.get('env')].connectionString });
+var sessionStore = new MongoSessionStore({ url: 'mongodb://localhost/meadowlark_dev' });
 
 // 使用域捕获异常 必须放在所有中间件和路由前面
 app.use(function(req, res, next) {
@@ -118,7 +123,7 @@ app.use(express.static(__dirname + '/public'));
 app.use(require('body-parser')()); // form表单
 app.use(require('cookie-parser')(credentials.cookieSecret)); // cookie解析
 
-// 使用内存存储会话数据
+// 使用内存存储会话数据 只能在开发环境使用
 /*app.use(require('express-session')({ // 内存会话
     secret: credentials.cookieSecret, // 与cookie-parser保持一致
     resave: true,
@@ -476,7 +481,7 @@ app.use(vhost('api.*', rest.rester(apiOptions)));
 // 使用域 + 路由访问上面的路由 localhost/attractions
 // app.use(rest.rester(apiOptions));
 
-apiOptions.domain.on('error', function(err) {
+/*apiOptions.domain.on('error', function(err) {
     console.log('API domain error.\n', err.stack);
     setTimeout(function() {
         console.log('Server shutting down after API domain error.');
@@ -485,7 +490,7 @@ apiOptions.domain.on('error', function(err) {
     server.close();
     var worker = require('cluster').worker;
     if (worker) worker.disconnect();
-});
+});*/
 
 // 自动视图 (上面都匹配不到，会自动进入views寻找，比较适合简单页面展示)
 /*var autoViews = {};

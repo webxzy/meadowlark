@@ -4,6 +4,9 @@ var newsletter = require('./handlers/newsletter.js');
 var vacationPhoto = require('./handlers/vacationPhoto.js');
 var attraction = require('./handlers/attraction.js');
 
+// 跨站请求伪造
+var csrfProtection = require('csurf')({ cookie: true });
+
 module.exports = function(app) {
     // 记事本
     app.get('/record', record.getRecord);
@@ -18,8 +21,8 @@ module.exports = function(app) {
     app.post('/notify-me-when-in-season', vacation.postNotifyMeWhenInSeason);
 
     // 简报
-    app.get('/newsletter', newsletter.newsletter);
-    app.post('/process', newsletter.process);
+    app.get('/newsletter', csrfProtection, newsletter.newsletter);
+    app.post('/process', csrfProtection, newsletter.process);
     app.get('/newsletter/archive', newsletter.archive);
 
     // 上传图片
